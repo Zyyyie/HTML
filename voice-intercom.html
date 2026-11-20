@@ -1,0 +1,791 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Voice Intercom</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Barlow:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<style>
+:root{--bg:#EDF0F3;--pn:#fff;--ink:#14202B;--mut:#566673;--ln:#D5DCE2;--acc:#1B5FD6;--ok:#14935F;--wn:#C98200;--bad:#D3303A;--off:#98A4AE;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0F161C;--pn:#18222B;--ink:#E7EDF2;--mut:#9DABB7;--ln:#2A3844;--acc:#4C86F0;--ok:#2FBF84;--wn:#EBB03A;--bad:#F0626A;--off:#5F6F7C;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#0F161C;--pn:#18222B;--ink:#E7EDF2;--mut:#9DABB7;--ln:#2A3844;--acc:#4C86F0;--ok:#2FBF84;--wn:#EBB03A;--bad:#F0626A;--off:#5F6F7C;color-scheme:dark}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.45 Barlow,system-ui,sans-serif;min-height:100vh}
+h1,b,button,select,.pill{font-family:"Barlow Semi Condensed",system-ui,sans-serif}
+button,input,select{font-size:16px;color:inherit}
+button{cursor:pointer;border:1px solid var(--ln);background:var(--pn);border-radius:10px;padding:8px 14px;font-weight:600}
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+textarea{width:100%;padding:10px 12px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);font:12px/1.35 ui-monospace,Menlo,Consolas,monospace;color:inherit}
+input,select{width:100%;padding:10px 12px;border:1px solid var(--ln);border-radius:10px;background:var(--bg)}
+.wrap{max-width:900px;margin:0 auto;padding:16px 16px 200px}
+.card{background:var(--pn);border:1px solid var(--ln);border-radius:14px;padding:16px}
+#join{max-width:460px;margin:8vh auto 0;padding:0 16px;display:grid;gap:14px}
+#join h1{font-size:40px;line-height:1.05;margin:0}
+#join p{margin:0;color:var(--mut)}
+label{display:grid;gap:4px;font-weight:500}
+.btn{background:var(--acc);border-color:var(--acc);color:#fff;font-size:18px;padding:14px 22px;display:inline-flex;gap:10px;align-items:center;justify-content:center}
+#err{color:var(--bad);min-height:1.4em}
+header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+header h1{font-size:26px;margin:0}
+.ch{color:var(--mut);font-size:14px}
+.pill{display:inline-flex;gap:8px;align-items:center;padding:6px 12px;border:1px solid var(--ln);border-radius:999px;background:var(--pn);font-size:15px;font-weight:600}
+.qb{display:inline-flex;gap:2px;align-items:flex-end;height:14px}
+.qb s{display:block;width:4px;background:var(--ln);border-radius:1px}
+.qb s:nth-child(1){height:5px}.qb s:nth-child(2){height:9px}.qb s:nth-child(3){height:14px}
+.q1 s:nth-child(1){background:var(--bad)}
+.q2 s:nth-child(-n+2){background:var(--wn)}
+.q3 s{background:var(--ok)}
+#net{background:var(--wn);color:#111;padding:8px 14px;border-radius:10px;margin-bottom:12px;font-weight:600}
+#now{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;border-width:2px}
+#now.live{border-color:var(--ok)}
+#nw{font:700 28px/1.1 "Barlow Semi Condensed",system-ui,sans-serif}
+#nsub{color:var(--mut);font-size:14px;text-align:right}
+#roster{list-style:none;margin:0 0 14px;padding:0;display:grid;gap:8px}
+.u{display:flex;align-items:center;gap:12px;background:var(--pn);border:1px solid var(--ln);border-radius:14px;padding:10px 12px}
+.u.sp{border-color:var(--ok)}
+.u.off{opacity:.55}
+.av{flex:none;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font:700 20px "Barlow Semi Condensed",system-ui,sans-serif;background:hsl(var(--h) 50% 38%);color:#fff;transition:box-shadow .15s}
+.u.sp .av{box-shadow:0 0 0 4px var(--ok)}
+.nm{flex:1;min-width:0;display:grid}
+.nm b{font-size:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nm small{color:var(--mut);display:flex;align-items:center;gap:6px}
+.d{width:9px;height:9px;border-radius:50%;background:var(--off);display:inline-block}
+.d.online{background:var(--ok)}.d.busy{background:var(--wn)}
+.mu{color:var(--bad);display:flex}
+.empty{color:var(--mut);padding:18px;text-align:center;border:1px dashed var(--ln);border-radius:14px}
+details.card summary{cursor:pointer;font:700 18px "Barlow Semi Condensed",system-ui,sans-serif}
+.set{display:grid;gap:14px;margin-top:14px}
+.chk{display:flex;gap:10px;align-items:flex-start;font-weight:400}
+.chk input{width:20px;height:20px;margin:2px 0 0;flex:none}
+.chk small{display:block;color:var(--mut)}
+.seg{display:flex;border:1px solid var(--ln);border-radius:10px;overflow:hidden}
+.seg button{flex:1;border:0;border-radius:0;background:transparent}
+.seg button[aria-pressed=true]{background:var(--acc);color:#fff}
+.hint{color:var(--mut);font-size:14px;margin:0}
+#dock{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:center;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));background:var(--pn);border-top:1px solid var(--ln);z-index:5}
+#ctl{display:flex;align-items:center;gap:12px}
+.rb{width:68px;height:64px;border-radius:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:12px;padding:0}
+.rb.on,.rb.end{background:var(--bad);border-color:var(--bad);color:#fff}
+.big{width:104px;height:104px;border-radius:50%;background:var(--acc);border-color:var(--acc);color:#fff;font-size:14px;touch-action:none;user-select:none;-webkit-user-select:none;box-shadow:0 0 0 calc(var(--lv,0)*16px) color-mix(in srgb,var(--ok) 35%,transparent);transition:box-shadow .1s}
+.big.live{background:var(--ok);border-color:var(--ok)}
+.big.dim{background:var(--off);border-color:var(--off)}
+#toasts{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:12px;right:12px;display:grid;gap:8px;justify-items:center;z-index:9}
+.toast{background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:12px;display:flex;gap:12px;align-items:center;max-width:460px;box-shadow:0 4px 18px #0004}
+.toast button{background:var(--ok);border-color:var(--ok);color:#fff;padding:4px 12px}
+@media(min-width:760px){.wrap{padding-bottom:180px}#nw{font-size:34px}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<section id="join">
+  <h1>Voice intercom</h1>
+  <p>Talk to your team in real time. Everyone on the same channel can hear each other.</p>
+  <label>Your name<input id="nm" maxlength="24" autocomplete="nickname" placeholder="e.g. Maria"></label>
+  <label>Channel<input id="ch" maxlength="40" autocapitalize="none" placeholder="lobby"></label>
+  <button class="btn" id="go">Enter intercom</button>
+  <button id="goo">No internet? Use offline mode (same hotspot)</button>
+  <div id="err" role="alert"></div>
+</section>
+
+<main id="main" class="wrap" hidden>
+  <header>
+    <div><h1>Voice intercom</h1><div class="ch">Channel: <b id="cl"></b></div></div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span class="pill" title="Connection quality"><i class="qb" id="hq"><s></s><s></s><s></s></i><span id="hl">Good</span></span>
+      <button id="leave">Leave</button>
+    </div>
+  </header>
+  <div id="net" role="status" hidden></div>
+  <section class="card" id="now"><div id="nw">Quiet</div><div id="nsub"></div></section>
+  <ul id="roster" aria-live="polite"></ul>
+  <section class="card" id="offp" hidden style="margin-bottom:14px">
+    <b style="font-size:18px">Offline mode (same hotspot)</b>
+    <p class="hint" id="oh" style="margin-top:6px"></p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
+      <button id="o-join">Join a host</button><button id="o-add">Add a person (I’m the host)</button>
+    </div>
+    <div id="ost" hidden>
+      <p class="hint" id="otx"></p>
+      <canvas id="oqr" hidden></canvas>
+      <video id="ovid" playsinline muted hidden style="width:100%;max-width:360px;border-radius:10px"></video>
+      <textarea id="oc" rows="4" spellcheck="false" autocapitalize="none" placeholder="Paste code here"></textarea>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+        <button id="o-copy" hidden>Copy code</button><button id="o-next" hidden>Next: scan host reply</button><button id="o-scan" hidden>Scan with camera</button><button id="o-use" hidden>Use pasted code</button>
+      </div>
+      <div id="oerr" class="hint" style="color:var(--bad);margin-top:6px"></div>
+    </div>
+  </section>
+  <details class="card">
+    <summary>Audio, status and network</summary>
+    <div class="set">
+      <div><div style="font-weight:500;margin-bottom:4px">Mic mode</div>
+        <div class="seg"><button id="mdp">Push-to-talk</button><button id="mdo">Always on</button></div>
+        <p class="hint" style="margin-top:6px">Push-to-talk: hold the big button, or hold the space bar.</p></div>
+      <label>My status<select id="st"><option value="online">Online</option><option value="busy">Busy</option><option value="offline">Offline</option></select></label>
+      <label class="chk"><input type="checkbox" id="low"><span>Low-data mode<small>Caps voice at 12 kbps with larger packets. Turns on automatically on slow connections.</small></span></label>
+      <label class="chk"><input type="checkbox" id="nsup"><span>Noise suppression</span></label>
+      <label class="chk"><input type="checkbox" id="ec"><span>Echo cancellation<small>Use headphones for the cleanest sound.</small></span></label>
+      <label class="chk"><input type="checkbox" id="agc"><span>Automatic volume</span></label>
+      <label>TURN server (optional)<input id="tu" placeholder="turn:turn.example.com:3478" autocapitalize="none"></label>
+      <label>TURN username<input id="tn" autocapitalize="none" autocomplete="off"></label>
+      <label>TURN credential<input id="tc" type="password" autocomplete="off"></label>
+      <label class="chk"><input type="checkbox" id="rl"><span>Always relay through TURN<small>Hides your IP address from others; uses more server bandwidth.</small></span></label>
+      <p class="hint">Direct connections use STUN first. If a firewall blocks them, the call falls back to your TURN server. Connection changes apply to your next call.</p>
+    </div>
+  </details>
+</main>
+
+<nav id="dock" hidden>
+  <button class="btn" id="jg"></button>
+  <div id="ctl" hidden>
+    <button class="rb" id="mute"></button>
+    <button class="rb big" id="talk"><span id="tl"></span></button>
+    <button class="rb" id="spk"></button>
+    <button class="rb end" id="end"></button>
+  </div>
+</nav>
+<div id="toasts"></div>
+<div id="audios" style="position:fixed;left:-9999px;top:0;width:1px;height:1px;overflow:hidden" aria-hidden="true"></div>
+
+<script>
+/* ---------- Standalone signaling (replaces claude.use('room')) ----------
+   Presence + WebRTC signaling over a public MQTT-over-WebSocket broker.
+   Audio itself is peer-to-peer (WebRTC); the broker only carries small
+   presence / handshake messages. To use your own broker, edit BROKERS.
+   Change NS to your own unique string so you don't mix with other apps. */
+const Room=(()=>{
+  const NS='vi-dplooy-7k2/v1';
+  const BROKERS=['wss://broker.emqx.io:8084/mqtt','wss://broker.hivemq.com:8884/mqtt','wss://test.mosquitto.org:8081'];
+  const rid=()=>Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,6);
+  function connect(url,id,will){
+    return new Promise((res,rej)=>{
+      const c=mqtt.connect(url,{clientId:'vi_'+id,clean:true,keepalive:15,reconnectPeriod:2000,connectTimeout:8000,will});
+      const to=setTimeout(()=>{c.end(true);rej(new Error('timeout'))},9000);
+      const onErr=e=>{clearTimeout(to);c.end(true);rej(e)};
+      c.once('error',onErr);
+      c.once('connect',()=>{clearTimeout(to);c.removeListener('error',onErr);c.on('error',()=>{});res(c)});
+    });
+  }
+  async function join(chan){
+    if(typeof mqtt==='undefined')throw new Error('mqtt library missing');
+    const id=rid(),base=NS+'/'+chan,pt=base+'/p/',st=base+'/s/';
+    const will={topic:pt+id,payload:'',retain:true,qos:0};
+    let c=null;
+    for(const u of BROKERS){try{c=await connect(u,id,will);break}catch(e){}}
+    if(!c)throw new Error('no broker');
+    const peers=new Map(),seen=new Map(),peerCbs=[],sigCbs=[],connCbs=[];
+    let mine={};
+    const self=()=>({peer:id,presence:mine,isMe:true,sameTab:true,kind:'viewer'});
+    peers.set(id,self());
+    const fire=ch=>peerCbs.forEach(f=>{try{f(ch)}catch(e){}});
+    const pub=()=>{try{c.publish(pt+id,JSON.stringify(mine),{retain:true,qos:0})}catch(e){}};
+    c.subscribe([pt+'+',st+id],{qos:1});
+    c.on('message',(topic,payload)=>{
+      try{
+        const txt=payload.toString();
+        if(topic.startsWith(pt)){
+          const pid=topic.slice(pt.length);
+          if(pid===id||!/^[a-z0-9]{1,24}$/.test(pid))return;
+          if(!txt){const p=peers.get(pid);if(p){peers.delete(pid);seen.delete(pid);fire({joined:[],updated:[],left:[p]})}return}
+          const pres=JSON.parse(txt);if(!pres||typeof pres!=='object')return;
+          seen.set(pid,Date.now());
+          const had=peers.get(pid),p={peer:pid,presence:pres,isMe:false,sameTab:false,kind:'viewer'};
+          peers.set(pid,p);
+          fire(had?{joined:[],updated:[p],left:[]}:{joined:[p],updated:[],left:[]});
+        }else if(topic===st+id){
+          const m=JSON.parse(txt);
+          if(!m||typeof m.from!=='string'||!/^[a-z0-9]{1,24}$/.test(m.from)||!m.data||typeof m.data!=='object')return;
+          sigCbs.forEach(f=>{try{f({peer:m.from,data:m.data,sameTab:false})}catch(e){}});
+        }
+      }catch(e){}
+    });
+    c.on('connect',()=>{pub();connCbs.forEach(f=>f(true))});
+    const off=()=>connCbs.forEach(f=>f(false));
+    c.on('close',off);c.on('offline',off);
+    // heartbeat + drop peers that went silent (e.g. crashed tabs)
+    setInterval(()=>{
+      if(c.connected&&Object.keys(mine).length)pub();
+      const now=Date.now(),gone=[];
+      seen.forEach((t,pid)=>{if(now-t>90000){const p=peers.get(pid);if(p)gone.push(p);peers.delete(pid);seen.delete(pid)}});
+      if(gone.length)fire({joined:[],updated:[],left:gone});
+    },10000);
+    addEventListener('pagehide',()=>{try{c.publish(pt+id,'',{retain:true,qos:0});c.end(true)}catch(e){}});
+    return{
+      peers:()=>[...peers.values()],
+      onPeers:f=>{peerCbs.push(f)},
+      on:(t,f)=>{if(t==='sig')sigCbs.push(f)},
+      onConnection:f=>{connCbs.push(f)},
+      connected:()=>!!c.connected,
+      presence:o=>{mine=Object.assign({},o);peers.set(id,self());pub();fire({joined:[],updated:[self()],left:[]});return Promise.resolve()},
+      emit:(t,d)=>new Promise((res,rej)=>{
+        if(t!=='sig'||!d||!/^[a-z0-9]{1,24}$/.test(String(d.to)))return rej(new Error('bad signal'));
+        c.publish(st+d.to,JSON.stringify({from:id,data:d}),{qos:1},e=>e?rej(e):res());
+      })
+    };
+  }
+  return{join};
+})();
+
+/* ---------- Tiny QR encoder (byte mode, ECC level L, versions 1-16) ---------- */
+const QR=(()=>{
+  const T={1:[26,1,7],2:[44,1,10],3:[70,1,15],4:[100,1,20],5:[134,1,26],6:[172,2,18],7:[196,2,20],8:[242,2,24],9:[292,2,30],10:[346,4,18],11:[404,4,20],12:[466,4,24],13:[532,4,26],14:[581,4,30],15:[655,6,22],16:[733,6,24]};
+  const AL={1:[],2:[6,18],3:[6,22],4:[6,26],5:[6,30],6:[6,34],7:[6,22,38],8:[6,24,42],9:[6,26,46],10:[6,28,50],11:[6,30,54],12:[6,32,58],13:[6,34,62],14:[6,26,46,66],15:[6,26,48,70],16:[6,26,50,74]};
+  const mul=(x,y)=>{let z=0;for(let i=7;i>=0;i--){z=(z<<1)^((z>>>7)*0x11D);z^=((y>>>i)&1)*x}return z};
+  const rsGen=d=>{const r=new Array(d).fill(0);r[d-1]=1;let root=1;for(let i=0;i<d;i++){for(let j=0;j<d;j++){r[j]=mul(r[j],root);if(j+1<d)r[j]^=r[j+1]}root=mul(root,2)}return r};
+  const rsRem=(data,gen)=>{const r=new Array(gen.length).fill(0);for(const b of data){const f=b^r.shift();r.push(0);gen.forEach((c,i)=>{r[i]^=mul(c,f)})}return r};
+  const bit=(x,i)=>((x>>>i)&1)!==0;
+  return text=>{
+    const bytes=[...new TextEncoder().encode(text)];
+    let ver=0;
+    for(let v=1;v<=16;v++){const [raw,nb,ecl]=T[v];const cap=raw-nb*ecl;if(4+(v<10?8:16)+8*bytes.length<=cap*8){ver=v;break}}
+    if(!ver)throw new Error('Code too long');
+    const [raw,nb,ecl]=T[ver],cap=raw-nb*ecl,size=ver*4+17;
+    const bits=[];const push=(v,n)=>{for(let i=n-1;i>=0;i--)bits.push((v>>>i)&1)};
+    push(4,4);push(bytes.length,ver<10?8:16);bytes.forEach(b=>push(b,8));
+    push(0,Math.min(4,cap*8-bits.length));
+    while(bits.length%8)bits.push(0);
+    const data=[];for(let i=0;i<bits.length;i+=8){let b=0;for(let j=0;j<8;j++)b=(b<<1)|bits[i+j];data.push(b)}
+    for(let p=0xEC;data.length<cap;p^=0xEC^0x11)data.push(p);
+    // blocks + error correction + interleave
+    const shortLen=Math.floor(raw/nb),nShort=nb-raw%nb,gen=rsGen(ecl),blocks=[];
+    for(let i=0,k=0;i<nb;i++){const d=data.slice(k,k+shortLen-ecl+(i<nShort?0:1));k+=d.length;const e=rsRem(d,gen);if(i<nShort)d.push(0);blocks.push(d.concat(e))}
+    const cw=[];
+    for(let i=0;i<blocks[0].length;i++)blocks.forEach((b,j)=>{if(i!==shortLen-ecl||j>=nShort)cw.push(b[i])});
+    // matrix
+    const m=[],fn=[];for(let y=0;y<size;y++){m.push(new Array(size).fill(false));fn.push(new Array(size).fill(false))}
+    const setFn=(x,y,d)=>{m[y][x]=d;fn[y][x]=true};
+    for(let i=0;i<size;i++){setFn(6,i,i%2===0);setFn(i,6,i%2===0)}
+    const finder=(cx,cy)=>{for(let dy=-4;dy<=4;dy++)for(let dx=-4;dx<=4;dx++){const d=Math.max(Math.abs(dx),Math.abs(dy)),x=cx+dx,y=cy+dy;if(x>=0&&x<size&&y>=0&&y<size)setFn(x,y,d!==2&&d!==4)}};
+    finder(3,3);finder(size-4,3);finder(3,size-4);
+    const ap=AL[ver],last=ap.length-1;
+    ap.forEach((cy,i)=>ap.forEach((cx,j)=>{if((i===0&&j===0)||(i===0&&j===last)||(i===last&&j===0))return;for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++)setFn(cx+dx,cy+dy,Math.max(Math.abs(dx),Math.abs(dy))!==1)}));
+    const fmt=mask=>{
+      const d=(1<<3)|mask;let r=d;for(let i=0;i<10;i++)r=(r<<1)^((r>>>9)*0x537);
+      const b=((d<<10)|r)^0x5412;
+      for(let i=0;i<=5;i++)setFn(8,i,bit(b,i));
+      setFn(8,7,bit(b,6));setFn(8,8,bit(b,7));setFn(7,8,bit(b,8));
+      for(let i=9;i<15;i++)setFn(14-i,8,bit(b,i));
+      for(let i=0;i<8;i++)setFn(size-1-i,8,bit(b,i));
+      for(let i=8;i<15;i++)setFn(8,size-15+i,bit(b,i));
+      setFn(8,size-8,true);
+    };
+    fmt(0);
+    if(ver>=7){let r=ver;for(let i=0;i<12;i++)r=(r<<1)^((r>>>11)*0x1F25);const b=(ver<<12)|r;for(let i=0;i<18;i++){const v=bit(b,i),a=size-11+i%3,c=Math.floor(i/3);setFn(a,c,v);setFn(c,a,v)}}
+    // place data
+    let k=0;
+    for(let right=size-1;right>=1;right-=2){if(right===6)right=5;for(let vert=0;vert<size;vert++)for(let j=0;j<2;j++){const x=right-j,up=((right+1)&2)===0,y=up?size-1-vert:vert;if(!fn[y][x]&&k<cw.length*8){m[y][x]=bit(cw[k>>>3],7-(k&7));k++}}}
+    const mask=q=>{for(let y=0;y<size;y++)for(let x=0;x<size;x++){let v;switch(q){case 0:v=(x+y)%2===0;break;case 1:v=y%2===0;break;case 2:v=x%3===0;break;case 3:v=(x+y)%3===0;break;case 4:v=(Math.floor(x/3)+Math.floor(y/2))%2===0;break;case 5:v=x*y%2+x*y%3===0;break;case 6:v=(x*y%2+x*y%3)%2===0;break;default:v=((x+y)%2+x*y%3)%2===0}if(!fn[y][x]&&v)m[y][x]=!m[y][x]}};
+    const penalty=()=>{
+      let p=0;const rows=[],cols=[];
+      for(let a=0;a<size;a++){let r='',c='';for(let b=0;b<size;b++){r+=m[a][b]?'1':'0';c+=m[b][a]?'1':'0'}rows.push(r);cols.push(c)}
+      [...rows,...cols].forEach(s=>{const runs=s.match(/0+|1+/g);runs.forEach(x=>{if(x.length>=5)p+=3+x.length-5});p+=40*((s.match(/(?=10111010000|00001011101)/g)||[]).length)});
+      for(let y=0;y<size-1;y++)for(let x=0;x<size-1;x++){const v=m[y][x];if(v===m[y][x+1]&&v===m[y+1][x]&&v===m[y+1][x+1])p+=3}
+      let dark=0;m.forEach(r=>r.forEach(v=>{if(v)dark++}));
+      p+=10*(Math.ceil(Math.abs(dark*20-size*size*10)/(size*size))-1);
+      return p;
+    };
+    let best=0,bp=1e9;
+    for(let q=0;q<8;q++){mask(q);fmt(q);const p=penalty();if(p<bp){bp=p;best=q}mask(q)}
+    mask(best);fmt(best);
+    return m;
+  };
+})();
+function drawQR(cv,text){
+  const m=QR(text),n=m.length,s=Math.max(3,Math.floor(400/(n+8))),z=(n+8)*s;
+  cv.width=cv.height=z;
+  const x=cv.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,z,z);x.fillStyle='#000';
+  m.forEach((r,y)=>r.forEach((d,i)=>{if(d)x.fillRect((i+4)*s,(y+4)*s,s,s)}));
+  cv.style.width='min(100%,360px)';cv.style.height='auto';cv.style.imageRendering='pixelated';
+}
+
+/* ---------- Offline mode (no internet): devices on the same hotspot / Wi-Fi ----------
+   Pairing is done by scanning a QR code (or pasting text) between devices, so no server
+   is needed. One device is the host; everyone else pairs with the host once. The host
+   relays the call handshakes, so all guests end up connected to each other.            */
+const Local=(()=>{
+  const rid=()=>Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,6);
+  const b64=u=>btoa(String.fromCharCode(...u)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  const unb64=s=>Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));
+  const hex2b=h=>Uint8Array.from(h.split(':').map(x=>parseInt(x,16)));
+  const b2hex=u=>[...u].map(x=>x.toString(16).padStart(2,'0').toUpperCase()).join(':');
+  const idOk=s=>typeof s==='string'&&/^[a-z0-9]{1,24}$/.test(s);
+  const addrOk=s=>typeof s==='string'&&(/^(\d{1,3}\.){3}\d{1,3}$/.test(s)||/^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.local$/.test(s))&&s.length<=64;
+  // compact pairing code: ["o"|"a", ice-ufrag, ice-pwd, fingerprint, [[ip,port],...]]
+  function pack(sdp,type){
+    const g=r=>(sdp.match(r)||[])[1];
+    const u=g(/a=ice-ufrag:(\S+)/),p=g(/a=ice-pwd:(\S+)/),f=g(/a=fingerprint:sha-256 (\S+)/);
+    const seen=new Set(),cs=[];
+    for(const m of sdp.matchAll(/a=candidate:\S+ 1 udp \d+ (\S+) (\d+) typ host/g)){
+      const k=m[1]+':'+m[2];if(addrOk(m[1])&&!seen.has(k)&&cs.length<4){seen.add(k);cs.push([m[1],+m[2]])}
+    }
+    if(!u||!p||!f||!cs.length)throw new Error('No local network address found. Is Wi-Fi / hotspot on?');
+    return JSON.stringify([type==='offer'?'o':'a',u,p,b64(hex2b(f)),cs]);
+  }
+  function unpack(s){
+    let a;try{a=JSON.parse(String(s).trim())}catch(e){throw new Error('not a valid code')}
+    if(!Array.isArray(a)||a.length!==5||(a[0]!=='o'&&a[0]!=='a'))throw new Error('not a valid code');
+    const [t,u,p,f,cs]=a,tok=/^[A-Za-z0-9+\/]{3,256}$/;
+    if(!tok.test(u)||!tok.test(p)||!/^[A-Za-z0-9_-]{40,50}$/.test(f)||!Array.isArray(cs)||!cs.length||cs.length>4)throw new Error('not a valid code');
+    const lines=['v=0','o=- 1 2 IN IP4 127.0.0.1','s=-','t=0 0','a=group:BUNDLE 0','m=application 9 UDP/DTLS/SCTP webrtc-datachannel','c=IN IP4 0.0.0.0','a=ice-ufrag:'+u,'a=ice-pwd:'+p,'a=ice-options:trickle','a=fingerprint:sha-256 '+b2hex(unb64(f)),'a=setup:'+(t==='o'?'actpass':'active'),'a=mid:0','a=sctp-port:5000','a=max-message-size:262144'];
+    cs.forEach((c,i)=>{
+      if(!Array.isArray(c)||!addrOk(c[0])||!Number.isInteger(c[1])||c[1]<1||c[1]>65535)throw new Error('not a valid code');
+      lines.push('a=candidate:'+(i+1)+' 1 udp '+(2113937151-i)+' '+c[0]+' '+c[1]+' typ host generation 0');
+    });
+    lines.push('a=end-of-candidates');
+    return{type:t==='o'?'offer':'answer',sdp:lines.join('\r\n')+'\r\n'};
+  }
+  const gathered=pc=>new Promise(res=>{
+    if(pc.iceGatheringState==='complete')return res();
+    const t=setTimeout(res,4000);
+    pc.addEventListener('icegatheringstatechange',()=>{if(pc.iceGatheringState==='complete'){clearTimeout(t);res()}});
+  });
+  function create(prep){
+    const id=rid(),peers=new Map(),links=new Map(),peerCbs=[],sigCbs=[],connCbs=[];
+    let mine={},role=null,hostId=null,pend=null;
+    const self=()=>({peer:id,presence:mine,isMe:true,sameTab:true,kind:'viewer'});
+    peers.set(id,self());
+    const fire=ch=>peerCbs.forEach(f=>{try{f(ch)}catch(e){}});
+    const linked=()=>connCbs.forEach(f=>{try{f(links.size>0)}catch(e){}});
+    const send=(dc,m)=>{try{if(dc.readyState==='open')dc.send(JSON.stringify(m))}catch(e){}};
+    const bcast=(m,except)=>links.forEach((l,k)=>{if(k!==except)send(l.dc,m)});
+    const upsert=(k,p)=>{const had=peers.get(k),n={peer:k,presence:p,isMe:false,sameTab:false,kind:'viewer'};peers.set(k,n);fire(had?{joined:[],updated:[n],left:[]}:{joined:[n],updated:[],left:[]})};
+    const drop=k=>{const p=peers.get(k);if(p&&k!==id){peers.delete(k);fire({joined:[],updated:[],left:[p]})}};
+    const deliver=(from,d)=>{if(idOk(from))sigCbs.forEach(f=>{try{f({peer:from,data:d,sameTab:false})}catch(e){}})};
+    function setup(pc,dc,asHost){
+      let who=null;const L={pc,dc};
+      dc.onopen=()=>send(dc,{k:'hi',id});if(dc.readyState==='open')send(dc,{k:'hi',id});
+      dc.onmessage=e=>{
+        let m;try{m=JSON.parse(e.data)}catch(x){return}
+        if(!m||typeof m!=='object')return;
+        if(m.k==='hi'){
+          if(who||!idOk(m.id)||m.id===id)return;
+          who=m.id;links.set(who,L);
+          if(asHost){role='host';peers.forEach((p,k)=>send(dc,{k:'pres',id:k,p:p.presence}))}
+          else{role='joiner';hostId=who;send(dc,{k:'pres',id,p:mine})}
+          linked();return;
+        }
+        if(!who)return;
+        if(m.k==='pres'){
+          if(!m.p||typeof m.p!=='object')return;
+          if(asHost){if(m.id!==who)return;upsert(who,m.p);bcast({k:'pres',id:who,p:m.p},who)}
+          else if(idOk(m.id)&&m.id!==id)upsert(m.id,m.p);
+        }else if(m.k==='left'){if(!asHost&&idOk(m.id))drop(m.id)}
+        else if(m.k==='sig'){
+          const d=m.data;if(!d||typeof d!=='object')return;
+          if(asHost){if(m.to===id)deliver(who,d);else if(links.has(m.to))send(links.get(m.to).dc,{k:'sig',from:who,data:d})}
+          else deliver(m.from,d);
+        }
+      };
+      const gone=()=>{
+        if(!who||links.get(who)!==L)return;
+        links.delete(who);
+        if(asHost){drop(who);bcast({k:'left',id:who})}
+        else{[...peers.keys()].forEach(drop);role=null;hostId=null}
+        linked();
+      };
+      dc.onclose=gone;
+      pc.onconnectionstatechange=()=>{if(pc.connectionState==='failed'||pc.connectionState==='closed')gone()};
+    }
+    return{
+      local:true,
+      role:()=>role,
+      count:()=>links.size,
+      peers:()=>[...peers.values()],
+      onPeers:f=>{peerCbs.push(f)},
+      on:(t,f)=>{if(t==='sig')sigCbs.push(f)},
+      onConnection:f=>{connCbs.push(f)},
+      connected:()=>true,
+      presence:o=>{mine=Object.assign({},o);peers.set(id,self());bcast({k:'pres',id,p:mine});fire({joined:[],updated:[self()],left:[]});return Promise.resolve()},
+      emit:(t,d)=>new Promise((res,rej)=>{
+        const to=d&&String(d.to);
+        if(t!=='sig'||!idOk(to))return rej(new Error('bad signal'));
+        if(role==='host'&&links.has(to))send(links.get(to).dc,{k:'sig',from:id,data:d});
+        else if(role==='joiner'&&hostId&&links.has(hostId))send(links.get(hostId).dc,{k:'sig',to,data:d});
+        else return rej(new Error('no route'));
+        res();
+      }),
+      // pairing: joiner shows offer(), host answer(code), joiner finish(code)
+      async offer(){
+        if(role==='host')throw new Error('This device is already the host');
+        await prep();
+        if(pend){try{pend.pc.close()}catch(e){}}
+        const pc=new RTCPeerConnection({iceServers:[]}),dc=pc.createDataChannel('s');
+        pend={pc,dc};
+        await pc.setLocalDescription(await pc.createOffer());
+        await gathered(pc);
+        return pack(pc.localDescription.sdp,'offer');
+      },
+      async answer(code){
+        if(role==='joiner')throw new Error('This device already joined a host');
+        await prep();
+        const d=unpack(code);if(d.type!=='offer')throw new Error('that is a reply code, not a guest code');
+        const pc=new RTCPeerConnection({iceServers:[]});
+        pc.ondatachannel=e=>setup(pc,e.channel,true);
+        await pc.setRemoteDescription(d);
+        await pc.setLocalDescription(await pc.createAnswer());
+        await gathered(pc);
+        return pack(pc.localDescription.sdp,'answer');
+      },
+      async finish(code){
+        if(!pend)throw new Error('start again from step 1');
+        const d=unpack(code);if(d.type!=='answer')throw new Error('that is a guest code, not a host reply');
+        await pend.pc.setRemoteDescription(d);
+        setup(pend.pc,pend.dc,false);pend=null;
+      }
+    };
+  }
+  return{create};
+})();
+if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});
+
+(()=>{
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const rnd=()=>Math.random().toString(36).slice(2,10);
+const P={mic:'<path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',x:'<path d="M3 3l18 18"/>',spk:'<path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/>',end:'<path d="M3 14c5-5 13-5 18 0l-2.5 2.5-3-1.5v-3a9 9 0 0 0-6 0v3l-3 1.5L3 14z"/>',tel:'<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>'};
+const ic=(k,x)=>'<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+P[k]+(x?P.x:'')+'</svg>';
+
+let saved={};try{saved=JSON.parse(localStorage.getItem('ic2')||'{}')}catch(e){}
+const S=Object.assign({name:'',chan:'lobby',status:'online',mode:'open',low:false,ns:true,ec:true,agc:true,relay:false,tu:'',tn:'',tc:''},saved);
+const cn=navigator.connection;
+if(!('low' in saved)&&cn&&(cn.saveData||/^(slow-2g|2g|3g)$/.test(cn.effectiveType||'')))S.low=true;
+const save=()=>{try{localStorage.setItem('ic2',JSON.stringify(S))}catch(e){}};
+
+const V={call:null,muted:false,spk:true,ptt:false,speaking:false,q:3,hold:0};
+let R=null,me=null,stream=null,actx=null,an=null,buf=null,warned=false;
+const PC=new Map(),known=new Map(),RT={};
+const L=[40000,28000,20000,12000,8000];   // adaptive Opus bitrate ladder (bps)
+const hue=n=>Math.abs([...n].reduce((a,c)=>(a*31+c.charCodeAt(0))|0,7))%360;
+const eff=x=>x.s==='offline'?'offline':(x.s==='busy'||(x.c&&x.c!=='g'))?'busy':'online';
+
+function toast(msg,act){const d=document.createElement('div');d.className='toast';d.append(msg);
+  if(act){const b=document.createElement('button');b.textContent=act[0];b.onclick=()=>{act[1]();d.remove()};d.append(b)}
+  $('#toasts').append(d);setTimeout(()=>d.remove(),act?20000:4500)}
+
+/* ---------- enter channel ---------- */
+$('#nm').value=S.name;$('#ch').value=S.chan;
+$('#go').onclick=async()=>{
+  S.name=$('#nm').value.trim().slice(0,24)||'Guest '+rnd().slice(0,3);
+  S.chan=$('#ch').value.trim().toLowerCase().replace(/[^a-z0-9_.-]+/g,'-').replace(/^[^a-z0-9]+/,'').slice(0,40)||'lobby';
+  save();
+  const b=$('#go'),fail=m=>{$('#err').textContent=m;b.disabled=false;b.textContent='Enter intercom'};
+  b.disabled=true;b.textContent='Connecting…';$('#err').textContent='';
+  let loc=forceLocal||!navigator.onLine;forceLocal=false;
+  if(!loc){try{R=await Room.join(S.chan)}catch(e){loc=true}}
+  if(loc){try{R=Local.create(()=>mic().catch(()=>{}))}catch(e){return fail('Offline mode isn’t supported in this browser.')}toast('No internet: offline mode. Put all devices on the same hotspot, then pair them below.')}
+  $('#join').hidden=true;$('#main').hidden=false;$('#dock').hidden=false;$('#cl').textContent=R.local?'offline (hotspot)':S.chan;
+  R.onPeers(ch=>{
+    me=(R.peers().find(p=>p.sameTab)||{}).peer||me;
+    ch.joined.concat(ch.updated).forEach(p=>{const x=p.presence;if(x&&x.n){const k=known.get(p.peer)||{};k.n=x.n;k.h=x.h;if(!p.isMe||p.sameTab)delete k.gone;known.set(p.peer,k)}});
+    ch.left.forEach(p=>{const k=known.get(p.peer);if(k)k.gone=Date.now()});
+    sync()});
+  R.on('sig',m=>{if(!m.sameTab&&m.data&&m.data.to===me)onSig(m.peer,m.data)});
+  R.onConnection(c=>{if(c)recover();draw()});
+  if(R.local)initOffline();pres();setInterval(sync,3000);setInterval(meter,100);poll();draw();
+};
+$('#leave').onclick=()=>{endCall();location.reload()};
+
+function pres(){if(R)R.presence({n:S.name,s:S.status,h:hue(S.name),m:S.mode,mu:V.muted?1:0,c:V.call,sp:V.speaking?1:0,q:V.q}).catch(()=>{})}
+function sig(to,d){R.emit('sig',Object.assign({},d,{to})).catch(e=>{if(e&&e.code==='not_permitted'&&!warned){warned=true;toast('This account can listen but can’t send call signals. Ask the owner for Contributor access.')}})}
+
+/* ---------- microphone ---------- */
+async function mic(){
+  if(stream&&stream.getAudioTracks()[0].readyState==='live')return;
+  actx=actx||new(window.AudioContext||window.webkitAudioContext)();
+  if(actx.resume)actx.resume();
+  const a={echoCancellation:S.ec,noiseSuppression:S.ns,autoGainControl:S.agc,channelCount:1};
+  if(S.low)a.sampleRate=16000;
+  stream=await navigator.mediaDevices.getUserMedia({audio:a});
+  const t=stream.getAudioTracks()[0];
+  t.onended=()=>{if(!V.call)return;stream=null;mic().then(()=>{const n=stream.getAudioTracks()[0];PC.forEach(o=>o.pc.getSenders().forEach(s=>{if(s.track&&s.track.kind==='audio')s.replaceTrack(n)}));applyTrack()}).catch(()=>toast('Microphone lost. Rejoin the call.'))};
+  an=actx.createAnalyser();an.fftSize=512;buf=new Uint8Array(an.fftSize);
+  actx.createMediaStreamSource(stream).connect(an);
+  applyTrack();
+}
+function applyTrack(){const t=stream&&stream.getAudioTracks()[0];if(t)t.enabled=!V.muted&&(S.mode==='open'||V.ptt)}
+function cons(){const t=stream&&stream.getAudioTracks()[0];if(t)t.applyConstraints({echoCancellation:S.ec,noiseSuppression:S.ns,autoGainControl:S.agc}).catch(()=>{})}
+function meter(){
+  let lv=0;
+  if(an&&stream){an.getByteTimeDomainData(buf);let s=0;for(const v of buf){const d=(v-128)/128;s+=d*d}lv=Math.sqrt(s/buf.length)}
+  const t=stream&&stream.getAudioTracks()[0],live=!!(t&&t.enabled);
+  $('#talk').style.setProperty('--lv',live?Math.min(1,lv*6).toFixed(2):'0');
+  if(live&&lv>0.02)V.hold=Date.now()+350;
+  const sp=live&&Date.now()<V.hold;
+  if(sp!==V.speaking){V.speaking=sp;pres();draw()}
+}
+
+/* ---------- calls ---------- */
+async function join(call){
+  if(S.status==='offline'){toast('Set your status to Online or Busy to join a call.');return false}
+  try{await mic()}catch(e){toast('Microphone blocked. Allow mic access in your browser, then try again.');return false}
+  V.call=call;V.muted=false;applyTrack();pres();sync();return true;
+}
+function endCall(){
+  V.call=null;V.speaking=false;V.ptt=false;[...PC.keys()].forEach(closePc);
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
+  if(actx){actx.close().catch(()=>{});actx=null;an=null}
+  if(R){pres();draw()}
+}
+async function callPeer(id){
+  if(!V.call&&!await join('c'+rnd()))return;
+  sig(id,{t:'inv',call:V.call,n:S.name});toast('Calling…');
+}
+
+/* ---------- WebRTC mesh ---------- */
+function tune(sdp){   // Opus: in-band FEC, DTX, mono, capped average bitrate
+  const m=sdp.match(/a=rtpmap:(\d+) opus\/48000/i);if(!m)return sdp;
+  const pt=m[1],mine=['useinbandfec=1','usedtx=1','stereo=0','maxaveragebitrate='+(S.low?12000:32000)];
+  if(S.low)mine.push('maxplaybackrate=16000');
+  const re=new RegExp('a=fmtp:'+pt+' (.*)'),drop=/^(useinbandfec|usedtx|stereo|maxaveragebitrate|maxplaybackrate)=/;
+  sdp=sdp.replace(/a=ptime:\d+\r\n/g,'');
+  const add=S.low?'\r\na=ptime:40':'';
+  return re.test(sdp)?sdp.replace(re,(_,x)=>'a=fmtp:'+pt+' '+x.split(';').filter(k=>k&&!drop.test(k)).concat(mine).join(';')+add)
+                     :sdp.replace(m[0],m[0]+'\r\na=fmtp:'+pt+' '+mine.join(';')+add);
+}
+const opus=tr=>{try{tr.setCodecPreferences(RTCRtpReceiver.getCapabilities('audio').codecs.filter(c=>/opus/i.test(c.mimeType)))}catch(e){}};
+function mk(id,gen,off){
+  const lan=!!(R&&R.local),ice=lan?[]:[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302','stun:global.stun.twilio.com:3478']}];
+  // Default public TURN relay (fallback when direct P2P is blocked by NAT/firewall/mobile data). Replace with your own TURN for reliability.
+  if(!S.tu&&!lan)ice.push({urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turns:openrelay.metered.ca:443?transport=tcp'],username:'openrelayproject',credential:'openrelayproject'});
+  if(S.tu&&!lan)ice.push({urls:S.tu.split(/[\s,]+/).filter(Boolean),username:S.tn,credential:S.tc});
+  const pc=new RTCPeerConnection({iceServers:ice,iceTransportPolicy:S.relay?'relay':'all',bundlePolicy:'max-bundle',iceCandidatePoolSize:2});
+  const o={pc,gen,off,t0:Date.now(),ok:0,lv:1,good:0,ap:-1,pend:[]};PC.set(id,o);
+  if(off){const tr=pc.addTransceiver(stream.getAudioTracks()[0],{direction:'sendrecv',streams:[stream]});opus(tr)}
+  pc.onicecandidate=e=>{if(e.candidate)sig(id,{t:'i',g:gen,c:e.candidate.toJSON()})};
+  pc.ontrack=e=>attach(id,e.streams[0]||new MediaStream([e.track]));
+  pc.onconnectionstatechange=()=>{
+    const s=pc.connectionState;clearTimeout(o.tm);
+    if(s==='connected'){o.ok=Date.now();o.rs=0;RT[id]=0;rate()}
+    else if(o.off&&(s==='disconnected'||s==='failed'))o.tm=setTimeout(()=>offer(id,1),s==='failed'?0:2500);   // ICE restart
+    draw()};
+  return o;
+}
+async function offer(id,restart){
+  const o=PC.get(id);if(!o||!o.off)return;
+  try{const d=await o.pc.createOffer({iceRestart:!!restart});d.sdp=tune(d.sdp);await o.pc.setLocalDescription(d);sig(id,{t:'o',g:o.gen,sdp:d.sdp})}catch(e){}
+}
+async function onSig(from,d){
+  try{
+    if(d.t==='inv'){
+      if(S.status!=='online'||V.call===d.call)return;
+      const call=String(d.call).slice(0,24);
+      toast((String(d.n||'Someone').slice(0,24))+' is calling you',['Join',()=>join(call)]);return;
+    }
+    if(!V.call||!stream)return;
+    let o=PC.get(from);
+    if(d.t==='o'){
+      if(from>me)return;   // the lower id always makes the offer
+      if(o&&o.gen!==d.g){closePc(from);o=null}
+      if(!o)o=mk(from,d.g,false);
+      await o.pc.setRemoteDescription({type:'offer',sdp:d.sdp});
+      if(!o.set){o.set=1;const t=stream.getAudioTracks()[0];for(const tr of o.pc.getTransceivers()){tr.direction='sendrecv';opus(tr);await tr.sender.replaceTrack(t)}}
+      o.pend.splice(0).forEach(c=>o.pc.addIceCandidate(c).catch(()=>{}));
+      const a=await o.pc.createAnswer();a.sdp=tune(a.sdp);await o.pc.setLocalDescription(a);
+      sig(from,{t:'a',g:d.g,sdp:a.sdp});
+    }else if(o&&o.gen===d.g){
+      if(d.t==='a'){await o.pc.setRemoteDescription({type:'answer',sdp:d.sdp});o.pend.splice(0).forEach(c=>o.pc.addIceCandidate(c).catch(()=>{}))}
+      else if(d.t==='i'){if(o.pc.remoteDescription)o.pc.addIceCandidate(d.c).catch(()=>{});else o.pend.push(d.c)}
+    }
+  }catch(e){}
+}
+function attach(id,ms){
+  let el=document.getElementById('a-'+id);
+  if(!el){el=document.createElement('audio');el.id='a-'+id;el.autoplay=true;el.playsInline=true;$('#audios').append(el)}
+  el.srcObject=ms;el.muted=!V.spk;const p=el.play();if(p)p.catch(()=>toast('Your browser blocked audio playback.',['Enable audio',()=>document.querySelectorAll('#audios audio').forEach(a=>a.play().catch(()=>{}))]));
+}
+function closePc(id){
+  const o=PC.get(id);
+  if(o){clearTimeout(o.tm);o.pc.onconnectionstatechange=o.pc.ontrack=o.pc.onicecandidate=null;try{o.pc.close()}catch(e){}PC.delete(id)}
+  const el=document.getElementById('a-'+id);if(el)el.remove();
+}
+function sync(){   // keep one healthy connection to everyone in my call; retry with backoff
+  if(!R||!me)return;
+  const want=new Set(),now=Date.now();
+  if(V.call&&stream)R.peers().forEach(p=>{const x=p.presence;if(!p.sameTab&&p.kind==='viewer'&&x&&x.c===V.call&&x.s!=='offline')want.add(p.peer)});
+  [...PC.keys()].forEach(id=>{if(!want.has(id))closePc(id)});
+  want.forEach(id=>{
+    let o=PC.get(id);
+    if(o){
+      const s=o.pc.connectionState;if(s==='connected')o.ok=now;
+      if(s==='closed'||(s!=='connected'&&now-(o.ok||o.t0)>25000)){closePc(id);RT[id]=(RT[id]||0)+1;RT['t'+id]=now+Math.min(15000,1000*2**RT[id]);o=null}
+      else if(o.off&&s!=='connected'){
+        if(!o.ok){if(now-o.t0>5000&&(o.re=(o.re||0)+1)<4)offer(id)}
+        else if(now-o.ok>8000&&(o.rs=(o.rs||0)+1)<4)offer(id,1);
+      }
+    }
+    if(!o&&me<id&&now>=(RT['t'+id]||0)){mk(id,rnd(),true);offer(id)}
+  });
+  draw();
+}
+function recover(){PC.forEach((o,id)=>{if(o.pc.connectionState!=='connected')offer(id,1)});sync()}
+addEventListener('online',recover);addEventListener('offline',()=>draw());
+
+/* ---------- quality + adaptive bitrate ---------- */
+function rate(){
+  PC.forEach(o=>{
+    const i=Math.max(o.lv,S.low?3:0);if(o.ap===i)return;
+    const s=o.pc.getSenders().find(x=>x.track&&x.track.kind==='audio');if(!s)return;
+    try{const p=s.getParameters();if(!p.encodings||!p.encodings.length)p.encodings=[{}];p.encodings[0].maxBitrate=L[i];p.encodings[0].networkPriority='high';s.setParameters(p).then(()=>{o.ap=i}).catch(()=>{})}catch(e){}
+  });
+}
+async function poll(){
+  let w=3;
+  for(const [id,o] of PC){
+    let rtt=0,rx=0,lost=0,jit=0;
+    try{(await o.pc.getStats()).forEach(r=>{
+      if(r.type==='candidate-pair'&&r.nominated&&r.state==='succeeded'&&r.currentRoundTripTime!=null)rtt=r.currentRoundTripTime*1000;
+      if(r.type==='inbound-rtp'&&r.kind==='audio'){rx=r.packetsReceived||0;lost=r.packetsLost||0;jit=(r.jitter||0)*1000}})}catch(e){}
+    const dr=rx-(o.rx||0),dl=lost-(o.lost||0);o.rx=rx;o.lost=lost;
+    const loss=dr+dl>0?Math.max(0,dl)/(dr+dl)*100:0,s=o.pc.connectionState;
+    let q=s==='connected'?3:(s==='new'||s==='connecting')?1:0;
+    if(q===3){if(loss>10||rtt>600||jit>80)q=1;else if(loss>3||rtt>300||jit>40)q=2}
+    if(q===1&&o.lv<L.length-1){o.lv++;o.good=0}                         // step bitrate down
+    else if(q===3&&++o.good>=4&&o.lv>0){o.lv--;o.good=0}               // creep back up
+    w=Math.min(w,q);
+  }
+  const q=(!R.local&&(!navigator.onLine||!R.connected()))?0:PC.size?w:3;
+  if(q!==V.q){V.q=q;pres()}
+  rate();draw();setTimeout(poll,S.low?4000:2000);
+}
+
+/* ---------- UI ---------- */
+function people(){
+  const live=R.peers().filter(p=>p.kind==='viewer'&&p.presence&&p.presence.n),ids=new Set(live.map(p=>p.peer));
+  const rows=live.map(p=>({id:p.peer,x:p.presence,me:p.sameTab}));
+  known.forEach((k,id)=>{if(k.gone&&!ids.has(id))rows.push({id,x:{n:k.n,h:k.h,s:'offline'},gone:1})});
+  const rk=r=>r.me?-1:r.gone?9:({online:1,busy:2,offline:3})[eff(r.x)]-(r.x.c?.5:0);
+  return rows.sort((a,b)=>rk(a)-rk(b));
+}
+const bars=q=>'<span class="qb q'+Math.min(3,Math.max(0,q|0))+'"><s></s><s></s><s></s></span>';
+function draw(){
+  if(!R)return;
+  const rows=people();
+  $('#roster').innerHTML=rows.length>1?rows.map(r=>{
+    const x=r.x,e=eff(x),inC=!!x.c,talk=x.sp&&inC;
+    const sub=r.gone?'Disconnected':e==='offline'?'Offline':x.c==='g'?'In the group call':inC?'In a private call':e==='busy'?'Busy':'Online';
+    const can=!r.me&&e==='online'&&S.status==='online'&&!r.gone;
+    return '<li class="u'+(talk?' sp':'')+(e==='offline'?' off':'')+'"><div class="av" style="--h:'+((+x.h||0)%360)+'">'+esc(([...String(x.n)][0]||'?').toUpperCase())+'</div>'
+      +'<div class="nm"><b>'+esc(x.n)+(r.me?' (you)':'')+'</b><small><i class="d '+e+'"></i>'+sub+(inC&&x.m==='ptt'?', push-to-talk':'')+'</small></div>'
+      +(inC&&x.mu?'<span class="mu" title="Muted">'+ic('mic',1)+'</span>':'')+(inC?bars(x.q):'')
+      +(can?'<button data-call="'+esc(r.id)+'">'+(V.call?'Add to call':'Call')+'</button>':'')+'</li>';
+  }).join(''):'<li class="empty">No one else is here yet. Share this page and the channel name “'+esc(S.chan)+'” so others can join.</li>';
+  // current speaker
+  const t=rows.filter(r=>r.x.sp&&r.x.c).map(r=>r.me?'You':r.x.n);
+  $('#now').classList.toggle('live',t.length>0);
+  $('#nw').textContent=t.length?t.join(', ')+(t.length>1?' are talking':' is talking'):'Quiet';
+  const c=[...PC.values()].filter(o=>o.pc.connectionState==='connected').length;
+  $('#nsub').textContent=V.call?(V.call==='g'?'Group call':'Private call')+', '+c+' connected':'Not in a call';
+  // connection quality
+  $('#hq').className='qb q'+V.q;$('#hl').textContent=['Offline','Poor','Fair','Good'][V.q];
+  const stuck=V.call&&[...PC.values()].some(o=>o.pc.connectionState!=='connected'&&Date.now()-(o.ok||o.t0)>4000);
+  const nt=$('#net'),off=!R.local&&(!navigator.onLine||!R.connected());nt.hidden=!(off||stuck);
+  nt.textContent=off?'You’re offline. Reconnecting automatically…':([...PC.values()].some(o=>o.pc.connectionState!=='connected'&&Date.now()-(o.ok||o.t0)>15000)?(R.local?'Can’t connect to some people. Make sure everyone is on the same hotspot.':'Can’t connect directly to some people. Their network may need a TURN server (see Audio, status and network).'):'Reconnecting to some people…');
+  drawDock(rows);
+}
+function drawDock(rows){
+  const inc=!!V.call,g=(rows||people()).filter(r=>r.x.c==='g'&&!r.gone).length;
+  $('#jg').hidden=inc;$('#ctl').hidden=!inc;
+  $('#jg').innerHTML=ic('tel')+(g?'Join group call ('+g+')':'Start group call');
+  if(!inc)return;
+  $('#mute').innerHTML=ic('mic',V.muted)+(V.muted?'Unmute':'Mute');$('#mute').classList.toggle('on',V.muted);
+  $('#spk').innerHTML=ic('spk',!V.spk)+(V.spk?'Speaker':'Speaker off');$('#spk').classList.toggle('on',!V.spk);
+  $('#end').innerHTML=ic('end')+'End';
+  const tk=$('#talk');tk.classList.toggle('live',!V.muted&&(S.mode==='open'||V.ptt));tk.classList.toggle('dim',V.muted);
+  $('#tl').textContent=V.muted?'Muted':S.mode==='ptt'?(V.ptt?'Talking':'Hold to talk'):'Mic open';
+}
+
+/* ---------- offline pairing UI ---------- */
+let forceLocal=false,ost=null,otimer=0,cur=null;
+const oq=$('#oqr'),ov=$('#ovid');
+$('#goo').onclick=()=>{forceLocal=true;$('#go').click()};
+function ostop(){clearInterval(otimer);if(ost){ost.getTracks().forEach(t=>t.stop());ost=null}ov.hidden=true}
+function ohint(){
+  const r=R.role(),h=$('#oh');
+  $('#o-join').hidden=r==='host'||r==='joiner';
+  $('#o-add').hidden=r==='joiner';
+  h.textContent=r==='joiner'?'Connected to the host. Now tap “Start group call” below.'
+    :r==='host'?'You are the host ('+R.count()+' connected). Tap “Add a person” for each new device, then everyone taps “Start group call”.'
+    :'No internet detected. Connect every device to the same hotspot (or Wi-Fi). One device is the host: guests tap “Join a host”, the host taps “Add a person”, and they swap two QR codes (once per guest).';
+}
+async function ostep(s,code){
+  ostop();cur=s;
+  const T=$('#otx'),C=$('#oc'),E=$('#oerr'),show=(id,v)=>{$('#'+id).hidden=!v};
+  $('#ost').hidden=false;E.textContent='';oq.hidden=true;
+  show('o-copy',0);show('o-scan',0);show('o-use',0);show('o-next',0);
+  const ro=v=>{C.readOnly=v;C.value=''};
+  if(s==='j1'){
+    T.textContent='Step 1 of 2: let the host scan this code (host taps “Add a person”).';ro(true);C.value='Preparing…';
+    try{const c=await R.offer();if(cur!=='j1')return;C.value=c;drawQR(oq,c);oq.hidden=false;show('o-copy',1);show('o-next',1)}
+    catch(e){C.value='';E.textContent='Couldn’t create a code: '+(e.message||e)}
+  }else if(s==='j2'){
+    T.textContent='Step 2 of 2: scan the host’s reply code (or paste it).';ro(false);show('o-scan',1);show('o-use',1);
+  }else if(s==='a1'){
+    T.textContent='Step 1 of 2: scan the guest’s code (the guest taps “Join a host” first), or paste it.';ro(false);show('o-scan',1);show('o-use',1);
+  }else if(s==='a2'){
+    T.textContent='Step 2 of 2: let the guest scan this reply code.';ro(true);C.value=code;drawQR(oq,code);oq.hidden=false;show('o-copy',1);
+  }
+}
+async function oscan(){
+  const E=$('#oerr');E.textContent='';
+  if(!('BarcodeDetector' in window)){E.textContent='This browser can’t scan QR codes. Paste the code instead, or use Chrome on Android.';return}
+  try{
+    ost=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    ov.srcObject=ost;ov.hidden=false;await ov.play();
+    const det=new BarcodeDetector({formats:['qr_code']});let busy=false;
+    otimer=setInterval(async()=>{
+      if(busy)return;busy=true;
+      try{const r=await det.detect(ov);if(r&&r[0]&&r[0].rawValue){const v=r[0].rawValue;ostop();ouse(v)}}catch(e){}
+      busy=false;
+    },300);
+  }catch(e){ostop();E.textContent='Camera blocked or unavailable. Paste the code instead.'}
+}
+async function ouse(code){
+  const E=$('#oerr');E.textContent='';
+  try{
+    if(cur==='j2'){$('#otx').textContent='Connecting…';await R.finish(code)}
+    else if(cur==='a1'){$('#otx').textContent='Working…';const a=await R.answer(code);await ostep('a2',a)}
+  }catch(e){E.textContent='That code didn’t work: '+(e.message||e);if(cur==='j2')$('#otx').textContent='Step 2 of 2: scan the host’s reply code (or paste it).'}
+}
+function initOffline(){
+  $('#offp').hidden=false;ohint();
+  R.onConnection(()=>{
+    const was=cur;ohint();
+    if(R.count()>0&&(was==='a2'||was==='j2')){ostop();cur=null;$('#ost').hidden=true;toast(R.role()==='host'?'Guest connected.':'Connected to the host.')}
+    else if(was==='j2'&&R.role()!=='joiner'){}
+  });
+  $('#o-join').onclick=()=>ostep('j1');
+  $('#o-add').onclick=()=>ostep('a1');
+  $('#o-next').onclick=()=>ostep('j2');
+  $('#o-scan').onclick=oscan;
+  $('#o-use').onclick=()=>ouse($('#oc').value);
+  $('#o-copy').onclick=()=>{const c=$('#oc').value;(navigator.clipboard?navigator.clipboard.writeText(c):Promise.reject()).then(()=>toast('Code copied.'),()=>{$('#oc').select();toast('Select the code and copy it.')})};
+}
+
+/* ---------- controls ---------- */
+$('#roster').onclick=e=>{const b=e.target.closest('[data-call]');if(b)callPeer(b.dataset.call)};
+$('#jg').onclick=()=>join('g');
+$('#end').onclick=endCall;
+$('#mute').onclick=()=>{V.muted=!V.muted;applyTrack();pres();draw()};
+$('#spk').onclick=()=>{V.spk=!V.spk;document.querySelectorAll('#audios audio').forEach(a=>a.muted=!V.spk);draw()};
+const T=$('#talk'),down=()=>{if(V.call&&S.mode==='ptt'&&!V.ptt){V.ptt=true;applyTrack();drawDock()}},up=()=>{if(V.ptt){V.ptt=false;applyTrack();drawDock()}};
+T.onpointerdown=e=>{e.preventDefault();if(T.setPointerCapture)T.setPointerCapture(e.pointerId);down()};
+T.onpointerup=T.onpointercancel=T.onlostpointercapture=up;
+T.onclick=()=>{if(S.mode==='open'){V.muted=!V.muted;applyTrack();pres();draw()}};
+addEventListener('keydown',e=>{if(e.code==='Space'&&!e.repeat&&!/INPUT|SELECT|TEXTAREA|BUTTON|SUMMARY/.test(e.target.tagName)){e.preventDefault();down()}});
+addEventListener('keyup',e=>{if(e.code==='Space')up()});
+addEventListener('blur',up);
+
+function setMode(m){S.mode=m;save();V.ptt=false;$('#mdp').setAttribute('aria-pressed',m==='ptt');$('#mdo').setAttribute('aria-pressed',m==='open');applyTrack();pres();if(R)draw()}
+$('#mdp').onclick=()=>setMode('ptt');$('#mdo').onclick=()=>setMode('open');setMode(S.mode);
+const bind=(id,k,cb)=>{const e=$('#'+id);if(e.type==='checkbox')e.checked=!!S[k];else e.value=S[k];e.onchange=()=>{S[k]=e.type==='checkbox'?e.checked:e.value;save();if(cb)cb()}};
+bind('low','low',()=>{rate();draw()});bind('nsup','ns',cons);bind('ec','ec',cons);bind('agc','agc',cons);
+bind('rl','relay');bind('tu','tu');bind('tn','tn');bind('tc','tc');
+bind('st','status',()=>{if(S.status==='offline'&&V.call)endCall();pres();sync()});
+})();
+</script>
+</body>
+</html>
